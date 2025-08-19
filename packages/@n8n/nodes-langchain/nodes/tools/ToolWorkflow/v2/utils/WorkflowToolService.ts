@@ -10,6 +10,7 @@ import type {
 	ExecutionError,
 	FromAIArgument,
 	IDataObject,
+	IExecuteFunctions,
 	IExecuteWorkflowInfo,
 	INodeExecutionData,
 	INodeParameterResourceLocator,
@@ -51,7 +52,7 @@ export class WorkflowToolService {
 	private returnAllItems: boolean = false;
 
 	constructor(
-		private baseContext: ISupplyDataFunctions,
+		private baseContext: ISupplyDataFunctions | IExecuteFunctions,
 		options?: { returnAllItems: boolean },
 	) {
 		const subWorkflowInputs = this.baseContext.getNode().parameters
@@ -66,11 +67,13 @@ export class WorkflowToolService {
 		name,
 		description,
 		itemIndex,
+		log = true,
 	}: {
-		ctx: ISupplyDataFunctions;
+		ctx: ISupplyDataFunctions | IExecuteFunctions;
 		name: string;
 		description: string;
 		itemIndex: number;
+		log: boolean;
 	}): Promise<DynamicTool | DynamicStructuredTool> {
 		// Handler for the tool execution, will be called when the tool is executed
 		// This function will execute the sub-workflow and return the response
@@ -78,7 +81,7 @@ export class WorkflowToolService {
 		// of the same tool when the tool is used in a loop or in a parallel execution.
 		const node = ctx.getNode();
 
-		let runIndex: number = ctx.getNextRunIndex();
+		let runIndex: number = 'getRunIndex' in ctx ? ctx.getRunIndex() : 0;
 		const toolHandler = async (
 			query: string | IDataObject,
 			runManager?: CallbackManagerForToolRun,
@@ -100,10 +103,13 @@ export class WorkflowToolService {
 				// We need to clone the context here to handle runIndex correctly
 				// Otherwise the runIndex will be shared between different executions
 				// Causing incorrect data to be passed to the sub-workflow and via $fromAI
-				const context = this.baseContext.cloneWith({
-					runIndex: localRunIndex,
-					inputData: [[{ json: { query } }]],
-				});
+				let context = this.baseContext;
+				if ('cloneWith' in this.baseContext) {
+					context = this.baseContext.cloneWith({
+						runIndex: localRunIndex,
+						inputData: [[{ json: { query } }]],
+					});
+				}
 
 				// Get abort signal from context for cancellation support
 				const abortSignal = context.getExecutionCancelSignal?.();
@@ -153,14 +159,18 @@ export class WorkflowToolService {
 						};
 					}
 
-					void context.addOutputData(
-						NodeConnectionTypes.AiTool,
-						localRunIndex,
-						[responseData],
-						metadata,
-					);
+					if (log) {
+						void context.addOutputData(
+							NodeConnectionTypes.AiTool,
+							localRunIndex,
+							[responseData],
+							metadata,
+						);
 
-					return processedResponse;
+						return processedResponse;
+					} else {
+						return responseData;
+					}
 				} catch (error) {
 					// Check if error is due to cancellation
 					if (abortSignal?.aborted) {
@@ -172,12 +182,14 @@ export class WorkflowToolService {
 					const errorResponse = `There was an error: "${executionError.message}"`;
 
 					const metadata = parseErrorMetadata(error);
-					void context.addOutputData(
-						NodeConnectionTypes.AiTool,
-						localRunIndex,
-						executionError,
-						metadata,
-					);
+					if (log) {
+						void context.addOutputData(
+							NodeConnectionTypes.AiTool,
+							localRunIndex,
+							executionError,
+							metadata,
+						);
+					}
 
 					if (tryIndex === maxTries - 1) {
 						return errorResponse;
@@ -224,7 +236,7 @@ export class WorkflowToolService {
 	 * Executes specified sub-workflow with provided inputs
 	 */
 	private async executeSubWorkflow(
-		context: ISupplyDataFunctions,
+		context: ISupplyDataFunctions | IExecuteFunctions,
 		workflowInfo: IExecuteWorkflowInfo,
 		items: INodeExecutionData[],
 		workflowProxy: IWorkflowDataProxyData,
@@ -265,7 +277,7 @@ export class WorkflowToolService {
 	 * This function will be called as part of the tool execution (from the toolHandler)
 	 */
 	private async runFunction(
-		context: ISupplyDataFunctions,
+		context: ISupplyDataFunctions | IExecuteFunctions,
 		query: string | IDataObject,
 		itemIndex: number,
 		runManager?: CallbackManagerForToolRun,
@@ -298,7 +310,7 @@ export class WorkflowToolService {
 	 * Gets the sub-workflow info based on the source (database or parameter)
 	 */
 	private async getSubWorkflowInfo(
-		context: ISupplyDataFunctions,
+		context: ISupplyDataFunctions | IExecuteFunctions,
 		source: string,
 		itemIndex: number,
 		workflowProxy: IWorkflowDataProxyData,
@@ -336,7 +348,7 @@ export class WorkflowToolService {
 	}
 
 	private prepareRawData(
-		context: ISupplyDataFunctions,
+		context: ISupplyDataFunctions | IExecuteFunctions,
 		query: string | IDataObject,
 		itemIndex: number,
 	): IDataObject {
@@ -359,7 +371,7 @@ export class WorkflowToolService {
 	 * Prepares the sub-workflow items for execution
 	 */
 	private async prepareWorkflowItems(
-		context: ISupplyDataFunctions,
+		context: ISupplyDataFunctions | IExecuteFunctions,
 		query: string | IDataObject,
 		itemIndex: number,
 		rawData: IDataObject,

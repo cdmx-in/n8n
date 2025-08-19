@@ -13,6 +13,7 @@ import type {
 	IRunExecutionData,
 	ITaskDataConnections,
 	IWorkflowExecuteAdditionalData,
+	NodeConnectionType,
 	NodeExecutionHint,
 	StructuredChunk,
 	Workflow,
@@ -200,6 +201,26 @@ export class ExecuteContext extends BaseExecuteContext implements IExecuteFuncti
 			return [];
 		}
 		return super.getInputItems(inputIndex, connectionType) ?? [];
+	}
+
+	getSubnodes(connectionType: NodeConnectionType): string[] {
+		const connections =
+			this.workflow.connectionsByDestinationNode?.[this.node.name]?.[connectionType];
+		if (!connections) return [];
+
+		const nodeNames: string[] = [];
+		for (const connectionArray of connections) {
+			if (connectionArray) {
+				for (const connection of connectionArray) {
+					nodeNames.push(connection.node);
+				}
+			}
+		}
+		return nodeNames;
+	}
+
+	getRunIndex(): number {
+		return this.runIndex;
 	}
 
 	logNodeOutput(...args: unknown[]): void {

@@ -8,6 +8,7 @@ import { Container } from '@n8n/di';
 import * as assert from 'assert/strict';
 import { setMaxListeners } from 'events';
 import get from 'lodash/get';
+import omit from 'lodash/omit';
 import type {
 	ExecutionBaseError,
 	ExecutionStatus,
@@ -67,7 +68,7 @@ import * as NodeExecuteFunctions from '@/node-execute-functions';
 import { isJsonCompatible } from '@/utils/is-json-compatible';
 
 import type { ExecutionLifecycleHooks } from './execution-lifecycle-hooks';
-import { ExecuteContext, PollContext } from './node-execution-context';
+import { ExecuteContext, PollContext, SupplyDataContext } from './node-execution-context';
 import {
 	DirectedGraph,
 	findStartNodes,
@@ -1197,7 +1198,7 @@ export class WorkflowExecute {
 	 * Validates execution data for JSON compatibility and reports issues to Sentry
 	 */
 	private reportJsonIncompatibleOutput(
-		data: INodeExecutionData[][] | null,
+		data: INodeExecutionData[][] | Request | null,
 		workflow: Workflow,
 		node: INode,
 	): void {
@@ -1206,7 +1207,7 @@ export class WorkflowExecute {
 			// Does not block the execution from continuing
 			const jsonCompatibleResult = isJsonCompatible(data, new Set(['pairedItem']));
 			if (!jsonCompatibleResult.isValid) {
-				Container.get(ErrorReporter).error('node execution returned incorrect output', {
+				Container.get(ErrorReporter).error('node execution returned incorrect data', {
 					shouldBeLogged: false,
 					extra: {
 						nodeName: node.name,
@@ -1294,6 +1295,113 @@ export class WorkflowExecute {
 		}
 
 		return { data, hints: context.hints };
+	}
+
+	/**
+	 * Executes a node with supplyData method, calling invoke if present on the response
+	 */
+	private async executeSupplyDataNode(
+		workflow: Workflow,
+		node: INode,
+		nodeType: INodeType,
+		additionalData: IWorkflowExecuteAdditionalData,
+		mode: WorkflowExecuteMode,
+		runExecutionData: IRunExecutionData,
+		runIndex: number,
+		connectionInputData: INodeExecutionData[],
+		inputData: ITaskDataConnections,
+		executionData: IExecuteData,
+		abortSignal?: AbortSignal,
+	): Promise<IRunNodeResponse | Request> {
+		const closeFunctions: CloseFunction[] = [];
+		const context = new SupplyDataContext(
+			workflow,
+			node,
+			additionalData,
+			mode,
+			runExecutionData,
+			runIndex,
+			connectionInputData,
+			inputData,
+			NodeConnectionTypes.AiTool,
+			executionData,
+			closeFunctions,
+			abortSignal,
+		);
+
+		let data: INodeExecutionData[][] | null;
+
+		// Call the supplyData method with itemIndex (typically 0 for single item processing)
+		const itemIndex = 0;
+		const suppliedData = await nodeType.supplyData!.call(context, itemIndex);
+
+		const input = omit(connectionInputData[itemIndex]?.json, 'toolCallId');
+
+		// Check if the response has an invoke method and call it
+		if (suppliedData?.response && typeof (suppliedData.response as any).invoke === 'function') {
+			// For tools executed via the engine, unwrap the logWrapper to avoid duplicate logging
+			let tool = suppliedData.response as any;
+			const isWrapped = tool.__n8n_is_wrapped__ === true && tool.__n8n_wrapped_tool__;
+
+			if (isWrapped) {
+				tool = tool.__n8n_wrapped_tool__;
+
+				// Log AI event for analytics
+				const eventData: any = { query: input };
+				if (tool.metadata?.isFromToolkit) {
+					eventData.tool = {
+						name: tool.name,
+						description: tool.description,
+					};
+				}
+				context.logAiEvent('ai-tool-called', JSON.stringify({ ...eventData }));
+			}
+
+			// Call the tool and let the normal execution flow handle input/output data
+			const response = await tool.invoke(input);
+			data = response;
+		} else {
+			// Return supplied data response directly if no invoke method
+			data = suppliedData?.response as INodeExecutionData[][] | null;
+		}
+
+		if (data && !Array.isArray(data)) {
+			data = [[{ json: data, pairedItem: { item: itemIndex } }]];
+		} else if (data && Array.isArray(data) && data.length > 0 && !Array.isArray(data[0])) {
+			// Handle vector store data that returns array of objects instead of INodeExecutionData[][]
+			// Transform array of objects to proper INodeExecutionData format
+			data = [
+				data.map(
+					(item: any, index) =>
+						({
+							json: item,
+							pairedItem: { item: index },
+						}) as INodeExecutionData,
+				),
+			];
+		}
+
+		this.reportJsonIncompatibleOutput(data, workflow, node);
+
+		const closeFunctionsResults = await Promise.allSettled(
+			closeFunctions.map(async (fn) => await fn()),
+		);
+
+		const closingErrors = closeFunctionsResults
+			.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-return
+			.map((result) => result.reason);
+
+		if (closingErrors.length > 0) {
+			if (closingErrors[0] instanceof Error) throw closingErrors[0];
+			throw new ApplicationError("Error on execution node's close function(s)", {
+				extra: { nodeName: node.name },
+				tags: { nodeType: node.type },
+				cause: closingErrors,
+			});
+		}
+
+		return { data };
 	}
 
 	/**
@@ -1442,7 +1550,10 @@ export class WorkflowExecute {
 
 		inputData = this.handleExecuteOnce(node, inputData);
 
-		if (nodeType.execute || customOperation) {
+		if (
+			(nodeType.execute || customOperation) &&
+			(!node.type.includes('vectorStore') || node.parameters?.mode !== 'retrieve-as-tool')
+		) {
 			return await this.executeNode(
 				workflow,
 				node,
@@ -1457,6 +1568,23 @@ export class WorkflowExecute {
 				executionData,
 				abortSignal,
 				subNodeExecutionResults,
+			);
+		}
+
+		const hasSupplyData = typeof nodeType.supplyData === 'function';
+		if (hasSupplyData) {
+			return await this.executeSupplyDataNode(
+				workflow,
+				node,
+				nodeType,
+				additionalData,
+				mode,
+				runExecutionData,
+				runIndex,
+				connectionInputData,
+				inputData,
+				executionData,
+				abortSignal,
 			);
 		}
 
@@ -1572,6 +1700,140 @@ export class WorkflowExecute {
 		}
 
 		return { startedAt: new Date(), hooks };
+	}
+
+	// TODO: extract and test in isolation
+	// Support waiting in tools
+	//
+	// if runNodeData is Request
+	// 1. stop executing current node and put it as paused on the stack
+	//	- do any clean up of execution variables
+	// 2. put actions nodes on the stack, rewiring the graph potentially?
+	// 3. continue executionLoop
+	// 4. when hitting the paused node again, restore the state and call the execute method on the paused node again
+	//
+	// Notes:
+	// - only nodes that have a continue method can return a Request
+	//
+	// Todos:
+	// - figure out how to recreate the stack after a tool waited and the execution was persisted to the database
+	private handleRequests({
+		workflow,
+		currentNode,
+		request,
+		runIndex,
+		executionData,
+	}: {
+		workflow: Workflow;
+		currentNode: INode;
+		request: Request;
+		runIndex: number;
+		executionData: IExecuteData;
+	}): {
+		nodesToBeExecuted: Array<{
+			inputConnectionData: IConnection;
+			parentOutputIndex: number;
+			parentNode: string;
+			parentOutputData: INodeExecutionData[][];
+			runIndex: number;
+			nodeRunIndex: number;
+			metadata?: ITaskMetadata;
+		}>;
+	} {
+		// 1. collect nodes to be put on the stack
+		const nodesToBeExecuted: Array<{
+			inputConnectionData: IConnection;
+			parentOutputIndex: number;
+			parentNode: string;
+			parentOutputData: INodeExecutionData[][];
+			runIndex: number;
+			nodeRunIndex: number;
+			metadata?: ITaskMetadata;
+		}> = [];
+		const subNodeExecutionData: ITaskMetadata['subNodeExecutionData'] = {
+			actions: [],
+			metadata: request.metadata,
+		};
+		for (const action of request.actions) {
+			const node = workflow.getNode(action.nodeName)!;
+			node.rewireOutputLogTo = action.type;
+			const inputConnectionData: IConnection = {
+				// agents always have a main input
+				type: action.type,
+				node: action.nodeName,
+				// tools always have only one input
+				index: 0,
+			};
+			const parentNode = currentNode.name;
+			const parentOutputData: INodeExecutionData[][] = [
+				[
+					{
+						json: {
+							...action.input,
+							toolCallId: action.id,
+						},
+					},
+				],
+			];
+			const parentOutputIndex = 0;
+
+			const nodeRunData = this.runExecutionData.resultData.runData[node.name] ?? [];
+			nodeRunData.push({
+				inputOverride: { ai_tool: parentOutputData },
+				source: [],
+				executionIndex: 0,
+				executionTime: 0,
+				startTime: 0,
+			});
+			this.runExecutionData.resultData.runData[node.name] = nodeRunData;
+			const nodeRunIndex = nodeRunData.length - 1;
+
+			nodesToBeExecuted.push({
+				inputConnectionData,
+				parentOutputIndex,
+				parentNode,
+				parentOutputData,
+				runIndex,
+				nodeRunIndex,
+			});
+			subNodeExecutionData.actions.push({
+				action,
+				nodeName: action.nodeName,
+				runIndex: nodeRunIndex,
+			});
+		}
+
+		// 2. create metadata for current node
+		const parentNode = executionData.source?.main?.[0]?.previousNode;
+		if (!parentNode) {
+			Logger.warn('Cannot find parent node for subnode execution', {
+				executionNode: executionData.node.name,
+				sourceData: executionData.source,
+				workflowId: workflow.id,
+			});
+
+			return { nodesToBeExecuted: [] };
+		}
+		const connectionData: IConnection = {
+			// agents always have a main input
+			type: 'ai_tool',
+			node: executionData.node.name,
+			// agents always have only one input
+			index: 0,
+		};
+
+		// 3. add current node back to the bottom of the stack
+		nodesToBeExecuted.unshift({
+			inputConnectionData: connectionData,
+			parentOutputIndex: 0,
+			parentNode,
+			parentOutputData: executionData.data.main as INodeExecutionData[][],
+			runIndex,
+			nodeRunIndex: runIndex,
+			metadata: { subNodeExecutionData },
+		});
+
+		return { nodesToBeExecuted };
 	}
 
 	/**
@@ -1862,6 +2124,7 @@ export class WorkflowExecute {
 								while (nodeFailed && tryIndex !== maxTries - 1) {
 									await sleep(waitBetweenTries);
 
+									// retries for failure happen here
 									runNodeData = await this.runNode(
 										workflow,
 										executionData,

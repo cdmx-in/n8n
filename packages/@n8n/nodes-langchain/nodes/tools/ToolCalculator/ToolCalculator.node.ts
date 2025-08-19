@@ -1,14 +1,22 @@
 import { Calculator } from '@langchain/community/tools/calculator';
 import {
+	type IExecuteFunctions,
 	NodeConnectionTypes,
 	type INodeType,
 	type INodeTypeDescription,
 	type ISupplyDataFunctions,
 	type SupplyData,
+	type INodeExecutionData,
 } from 'n8n-workflow';
 
 import { logWrapper } from '@utils/logWrapper';
 import { getConnectionHintNoticeField } from '@utils/sharedFields';
+
+function getTool(ctx: ISupplyDataFunctions | IExecuteFunctions): Calculator {
+	const calculator = new Calculator();
+	calculator.name = ctx.getNode().name;
+	return new Calculator();
+}
 
 export class ToolCalculator implements INodeType {
 	description: INodeTypeDescription = {
@@ -46,7 +54,29 @@ export class ToolCalculator implements INodeType {
 
 	async supplyData(this: ISupplyDataFunctions): Promise<SupplyData> {
 		return {
-			response: logWrapper(new Calculator(), this),
+			response: logWrapper(getTool(this), this),
 		};
+	}
+
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const calculator = getTool(this);
+		const input = this.getInputData();
+		const response: INodeExecutionData[][] = [];
+		for (let i = 0; i < input.length; i++) {
+			const inputItem = input[i];
+			const result = await calculator.invoke(inputItem.json);
+			response.push([
+				{
+					json: {
+						response: result,
+					},
+					pairedItems: {
+						itemIndex: i,
+					},
+				},
+			]);
+		}
+
+		return response;
 	}
 }
