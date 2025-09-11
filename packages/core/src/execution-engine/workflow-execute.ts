@@ -1765,6 +1765,10 @@ export class WorkflowExecute {
 				index: 0,
 			};
 			const parentNode = currentNode.name;
+			const parentSourceData = executionData.source?.main?.[runIndex];
+			const parentOutputIndex = parentSourceData?.previousNodeOutput || 0;
+			const parentRunIndex = parentSourceData?.previousNodeRun || 0;
+			const parentSourceNode = parentSourceData?.previousNode || currentNode.name;
 			const parentOutputData: INodeExecutionData[][] = [
 				[
 					{
@@ -1772,10 +1776,18 @@ export class WorkflowExecute {
 							...action.input,
 							toolCallId: action.id,
 						},
+						pairedItem: {
+							item: parentRunIndex,
+							input: parentOutputIndex || undefined,
+							sourceOverwrite: {
+								previousNode: parentSourceNode,
+								previousNodeOutput: parentOutputIndex,
+								previousNodeRun: parentRunIndex,
+							},
+						},
 					},
 				],
 			];
-			const parentOutputIndex = 0;
 
 			const nodeRunData = this.runExecutionData.resultData.runData[node.name] ?? [];
 			nodeRunData.push({
@@ -1998,11 +2010,20 @@ export class WorkflowExecute {
 								}
 
 								return input.map((item, itemIndex) => {
+									let sourceOverwrite = undefined;
+									if (
+										item.pairedItem &&
+										typeof item.pairedItem === 'object' &&
+										'sourceOverwrite' in item.pairedItem
+									) {
+										sourceOverwrite = item.pairedItem?.sourceOverwrite;
+									}
 									return {
 										...item,
 										pairedItem: {
 											item: itemIndex,
 											input: inputIndex || undefined,
+											sourceOverwrite,
 										},
 									};
 								});
