@@ -648,6 +648,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			const mockData = [[{ json: { polled: 'data' } }]];
 			mockNodeType.poll = jest.fn().mockResolvedValue(mockData);
 			mockNodeType.execute = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockContextInstance = {};
 			mockPollContext.mockImplementation(() => mockContextInstance as unknown as PollContext);
@@ -675,6 +676,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 		it('should pass through input data for poll nodes in non-manual mode', async () => {
 			mockNodeType.poll = jest.fn();
 			mockNodeType.execute = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const result = await workflowExecute.runNode(
 				mockWorkflow,
@@ -701,6 +703,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockTriggersAndPollersInstance = {
 				runTrigger: jest.fn().mockResolvedValue(mockTriggerResponse),
@@ -736,6 +739,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockTriggersAndPollersInstance = {
 				runTrigger: jest.fn().mockResolvedValue(undefined), // Return undefined to trigger line 1277
@@ -777,6 +781,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockTriggersAndPollersInstance = {
 				runTrigger: jest.fn().mockResolvedValue(mockTriggerResponse),
@@ -821,6 +826,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockTriggersAndPollersInstance = {
 				runTrigger: jest.fn().mockResolvedValue(mockTriggerResponse),
@@ -857,6 +863,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const result = await workflowExecute.runNode(
 				mockWorkflow,
@@ -877,6 +884,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.trigger = undefined;
+			mockNodeType.supplyData = undefined;
 			mockNodeType.description.requestDefaults = undefined; // Non-declarative
 
 			const result = await workflowExecute.runNode(
@@ -897,6 +905,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.execute = undefined;
 			mockNodeType.poll = undefined;
 			mockNodeType.trigger = undefined;
+			mockNodeType.supplyData = undefined;
 			mockNodeType.description.requestDefaults = {}; // Declarative node
 
 			const mockRoutingNodeInstance = {
@@ -930,6 +939,7 @@ describe('WorkflowExecute.runNode - Real Implementation', () => {
 			mockNodeType.poll = undefined;
 			mockNodeType.trigger = undefined;
 			mockNodeType.webhook = undefined;
+			mockNodeType.supplyData = undefined;
 
 			const mockRoutingNodeInstance = {
 				runNode: jest.fn().mockResolvedValue(mockData),
