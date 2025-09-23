@@ -1,7 +1,7 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Logger } from '@n8n/backend-common';
 import { AuthenticatedRequest } from '@n8n/db';
-import { Post, RestController } from '@n8n/decorators';
+import { Post, TopLevelController } from '@n8n/decorators';
 import type { Response } from 'express';
 
 import { McpService } from './mcp.service';
@@ -9,7 +9,7 @@ import { McpSettingsService } from './mcp.settings.service';
 
 export type FlushableResponse = Response & { flush: () => void };
 
-@RestController('/mcp-control')
+@TopLevelController('/mcp-access')
 export class McpController {
 	constructor(
 		private readonly logger: Logger,
