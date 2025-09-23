@@ -291,7 +291,6 @@ describe('processRunExecutionData', () => {
 
 			const workflow = new DirectedGraph()
 				.addNodes(nodeWithRequests, tool1Node, tool2Node)
-				// TODO: Do I need those connections? not sure anymore after rebasing.
 				.addConnections({ from: tool1Node, to: nodeWithRequests, type: 'ai_tool' })
 				.addConnections({ from: tool2Node, to: nodeWithRequests, type: 'ai_tool' })
 				.toWorkflow({ name: '', active: false, nodeTypes, settings: { executionOrder: 'v1' } });
