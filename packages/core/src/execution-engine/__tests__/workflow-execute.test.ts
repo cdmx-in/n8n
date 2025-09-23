@@ -1115,6 +1115,7 @@ describe('WorkflowExecute', () => {
 			execute: undefined,
 			poll: undefined,
 			webhook: undefined,
+			supplyData: undefined,
 			async trigger() {
 				return triggerResponse;
 			},
@@ -1137,8 +1138,7 @@ describe('WorkflowExecute', () => {
 		const abortController = new AbortController();
 		const workflowExecute = new WorkflowExecute(additionalData, 'manual');
 
-		// TODO: fix
-		test.skip('should call closeFunction when manual trigger is aborted', async () => {
+		test('should call closeFunction when manual trigger is aborted', async () => {
 			const runPromise = workflowExecute.runNode(
 				workflow,
 				executionData,
