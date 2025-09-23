@@ -1198,7 +1198,7 @@ export class WorkflowExecute {
 	 * Validates execution data for JSON compatibility and reports issues to Sentry
 	 */
 	private reportJsonIncompatibleOutput(
-		data: INodeExecutionData[][] | Request | null,
+		data: INodeExecutionData[][] | null,
 		workflow: Workflow,
 		node: INode,
 	): void {
