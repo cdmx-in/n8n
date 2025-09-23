@@ -107,7 +107,6 @@ export function makeHandleToolInvocation(
 	// of the same tool when the tool is used in a loop or in a parallel execution.
 	let runIndex = getNextRunIndex(runExecutionData, node.name);
 
-	// eslint-disable-next-line complexity
 	return async (toolArgs: IDataObject) => {
 		let maxTries = 1;
 		if (node.retryOnFail === true) {
