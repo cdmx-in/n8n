@@ -1064,7 +1064,6 @@ export type ISupplyDataFunctions = ExecuteFunctions.GetNodeParameterFn &
 		evaluateExpression(expression: string, itemIndex: number): NodeParameterValueType;
 		getWorkflowDataProxy(itemIndex: number): IWorkflowDataProxyData;
 		getExecutionCancelSignal(): AbortSignal | undefined;
-		getSubnodes(connectionType: NodeConnectionType): string[];
 		onExecutionCancellation(handler: () => unknown): void;
 		logAiEvent(eventName: AiEvent, msg?: string): void;
 		cloneWith(replacements: {
