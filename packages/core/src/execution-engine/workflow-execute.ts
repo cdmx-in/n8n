@@ -1999,7 +1999,6 @@ export class WorkflowExecute {
 								while (nodeFailed && tryIndex !== maxTries - 1) {
 									await sleep(waitBetweenTries);
 
-									// retries for failure happen here
 									runNodeData = await this.runNode(
 										workflow,
 										executionData,
