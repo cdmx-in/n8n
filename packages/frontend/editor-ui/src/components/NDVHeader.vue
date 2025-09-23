@@ -45,6 +45,12 @@ function onRename(newNodeName: string) {
 				/>
 			</div>
 
+			<N8nText v-if="hasCustomName && !docsUrl" size="small" bold>
+				{{ nodeTypeName }}
+			</N8nText>
+		</div>
+
+		<div :class="$style.actions">
 			<N8nLink v-if="docsUrl" theme="text" target="_blank" :href="docsUrl">
 				<span :class="$style.docsLabel">
 					<N8nText size="small" bold>
@@ -54,17 +60,13 @@ function onRename(newNodeName: string) {
 				</span>
 			</N8nLink>
 
-			<N8nText v-else-if="hasCustomName" size="small" bold>
-				{{ nodeTypeName }}
-			</N8nText>
+			<N8nTooltip>
+				<template #content>
+					{{ i18n.baseText('ndv.close.tooltip') }}
+				</template>
+				<N8nIconButton icon="x" type="tertiary" @click="emit('close')" />
+			</N8nTooltip>
 		</div>
-
-		<N8nTooltip>
-			<template #content>
-				{{ i18n.baseText('ndv.close.tooltip') }}
-			</template>
-			<N8nIconButton icon="x" type="tertiary" @click="emit('close')" />
-		</N8nTooltip>
 	</header>
 </template>
 
@@ -84,6 +86,12 @@ function onRename(newNodeName: string) {
 	align-items: flex-end;
 	gap: var(--spacing-2xs);
 	margin-left: var(--spacing-2xs);
+}
+
+.actions {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
 }
 
 .title {
